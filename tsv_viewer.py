@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+"""A lightweight, read-only TSV table viewer built with PySide6."""
 
 from __future__ import annotations
 
@@ -5,7 +7,7 @@ import csv
 import sys
 from pathlib import Path
 
-from PySide6.QtCore import QAbstractTableModel, QModelIndex, Qt
+from PySide6.QtCore import QAbstractTableModel, QModelIndex, QSortFilterProxyModel, Qt
 from PySide6.QtGui import QAction, QColor, QKeySequence
 from PySide6.QtWidgets import (
     QApplication,
@@ -115,17 +117,23 @@ class TsvViewer(QMainWindow):
         self.matches: list[QModelIndex] = []
         self.match_position = -1
         self.model = TsvModel()
+        self.sort_model = QSortFilterProxyModel(self)
+        self.sort_model.setSourceModel(self.model)
+        self.sort_model.setSortCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
+        self.sort_model.setSortLocaleAware(True)
 
         self.setWindowTitle("TSV Viewer")
         self.resize(1100, 700)
 
         self.table = QTableView()
-        self.table.setModel(self.model)
+        self.table.setModel(self.sort_model)
         self.table.setSelectionMode(QTableView.SelectionMode.ExtendedSelection)
         self.table.setSelectionBehavior(QTableView.SelectionBehavior.SelectItems)
         self.table.setAlternatingRowColors(True)
         self.table.setWordWrap(False)
-        self.table.setSortingEnabled(False)
+        self.table.setSortingEnabled(True)
+        # Do not reorder the file until the user clicks a column header.
+        self.sort_model.sort(-1)
         self.table.horizontalHeader().setSectionsClickable(True)
         self.table.verticalHeader().setSectionsClickable(True)
 
@@ -246,10 +254,13 @@ class TsvViewer(QMainWindow):
         self.match_position = -1
 
         if needle:
-            for row_number, row in enumerate(self.model.rows):
-                for column_number, value in enumerate(row):
+            # Search in the current visual order, which may have been sorted.
+            for row_number in range(self.sort_model.rowCount()):
+                for column_number in range(self.sort_model.columnCount()):
+                    index = self.sort_model.index(row_number, column_number)
+                    value = str(self.sort_model.data(index) or "")
                     if needle in value.casefold():
-                        self.matches.append(self.model.index(row_number, column_number))
+                        self.matches.append(index)
 
         if self.matches:
             self.match_position = 0
